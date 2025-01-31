@@ -8,6 +8,7 @@ const Note = require('../models/note');
 router.post("/add", async function (req, res) {
 
     try {
+        await Note.deleteOne({ id: req.body.id });
         const newNotes = Note({
             id: req.body.id,
             userId: req.body.userId,
