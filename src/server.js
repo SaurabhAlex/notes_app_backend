@@ -28,7 +28,7 @@ app.get("/", function (req, res) {
     res.json(response);
 })
 
-app.use('/notes', noteRouter);
+app.use('/', noteRouter);
 
 
 //starting the server on a port
