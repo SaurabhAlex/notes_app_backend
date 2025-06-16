@@ -1,20 +1,35 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/user');
 
-const JWT_SECRET = 'your-secret-key'; // In production, use environment variables
+// JWT Secret Key - In production, this should be in environment variables
+const JWT_SECRET = 'notes-app-secret-key-2024';
 
 const auth = async (req, res, next) => {
     try {
-        const token = req.header('Authorization')?.replace('Bearer ', '');
+        // Get token from header
+        const authHeader = req.header('Authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        const token = authHeader.replace('Bearer ', '');
+
+        // Verify token
+        const decoded = jwt.verify(token, JWT_SECRET);
         
-        if (!token) {
+        // Find user
+        const user = await User.findById(decoded.userId);
+        if (!user) {
             throw new Error();
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
+        // Add user to request object
+        req.user = user;
+        req.token = token;
+        
         next();
     } catch (error) {
-        res.status(401).json({ error: 'Please authenticate.' });
+        res.status(401).json({ error: 'Please authenticate' });
     }
 };
 
