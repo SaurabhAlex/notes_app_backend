@@ -59,23 +59,36 @@ router.post('/signup', async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ error: 'Email already exists' });
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Check if user already exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ error: 'Email already registered' });
+        }
+
+        // Create new user
         const user = new User({
             email,
-            password: hashedPassword
+            password // The password will be hashed by the pre-save middleware
         });
 
         await user.save();
         
-        const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-        res.status(201).json({ token });
+        // Generate token
+        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '24h' });
+        
+        res.status(201).json({
+            message: 'User created successfully',
+            token,
+            userId: user._id
+        });
     } catch (error) {
-        res.status(500).json({ error: 'Error signing up' });
+        console.error('Signup error:', error);
+        res.status(500).json({ error: 'Failed to create user account' });
     }
 });
 
@@ -107,21 +120,35 @@ router.post('/signup', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
+
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
         
+        // Find user
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        // Compare password
+        const isMatch = await user.comparePassword(password);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        const token = jwt.sign({ userId: user._id }, JWT_SECRET);
-        res.json({ token });
+        // Generate token
+        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '24h' });
+        
+        res.json({
+            message: 'Login successful',
+            token,
+            userId: user._id
+        });
     } catch (error) {
-        res.status(500).json({ error: 'Error logging in' });
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Failed to login' });
     }
 });
 
