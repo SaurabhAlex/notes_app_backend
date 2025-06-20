@@ -73,12 +73,9 @@ const facultySchema = new mongoose.Schema({
         }
     },
     role: {
-        type: String,
-        required: [true, 'Role is required'],
-        enum: {
-            values: ['Professor', 'Associate Professor', 'Assistant Professor', 'HOD', 'Dean'],
-            message: 'Role must be one of: Professor, Associate Professor, Assistant Professor, HOD, or Dean'
-        }
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Role',
+        required: [true, 'Role is required']
     },
     isActive: {
         type: Boolean,
@@ -111,6 +108,22 @@ facultySchema.pre('save', async function(next) {
             this.facultyId = `F${currentYear}${departmentCode}${sequence}`;
         }
         
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Validate that role exists and is active before saving
+facultySchema.pre('save', async function(next) {
+    try {
+        if (this.isModified('role')) {
+            const Role = mongoose.model('Role');
+            const role = await Role.findOne({ _id: this.role, isActive: true });
+            if (!role) {
+                throw new Error('Selected role does not exist or is inactive');
+            }
+        }
         next();
     } catch (error) {
         next(error);
