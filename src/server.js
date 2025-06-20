@@ -9,55 +9,69 @@ const cors = require('cors');
 const authRouter = require('./routes/auth');
 const studentRouter = require('./routes/student');
 const facultyRouter = require('./routes/faculty');
+const userRoutes = require('./routes/user');
+const roleRoutes = require('./routes/role');
+const classRoutes = require('./routes/class');
 
 // CORS configuration
-const corsOptions = {
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-};
+app.use(cors());
 
-// Middleware
-app.use(cors(corsOptions));
-app.use(bodyParser.urlencoded({ extended: false }));
-// if extended true -> nested body parse
-// if extended false -> nested body dont parse
-
+// Body parser middleware
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
 
-// Swagger UI setup - putting it before routes to ensure it's always accessible
+// Additional headers
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    next();
+});
+
+// Swagger UI setup
 app.use('/api-docs', swaggerUi.serve);
 app.get('/api-docs', swaggerUi.setup(swaggerSpecs, { explorer: true }));
 
 // MongoDB connection
 const mongoDbPath = "mongodb+srv://saurabhalex:Alexdb1@notes.3qcrt.mongodb.net/?retryWrites=true&w=majority&appName=Notes";
 
-mongoose.connect(mongoDbPath).then(() => {
-    console.log("Connected to MongoDB successfully");
-    // Only start the server after successful MongoDB connection
-    const PORT = process.env.PORT || 5001;
-    app.listen(PORT, function () {
-        console.log("Server started at port: " + PORT);
-        console.log("Swagger documentation available at: http://localhost:" + PORT + "/api-docs");
+mongoose.connect(mongoDbPath)
+    .then(() => {
+        console.log("Connected to MongoDB successfully");
+    })
+    .catch((error) => {
+        console.log('Error connecting to MongoDB:', error);
+        process.exit(1);
     });
-}).catch((error) => {
-    console.log('Error connecting to MongoDB:', error);
-    process.exit(1); // Exit if MongoDB connection fails
+
+// Basic route
+app.get("/", (req, res) => {
+    res.json({ message: "API works" });
 });
 
-// home screen
-app.get("/", function (req, res) {
-    const response = {
-        message: "API works"
-    }
-    res.json(response);
-})
-
-// Routes
+// API routes
 app.use('/auth', authRouter);
-app.use('/api/student', studentRouter);
+app.use('/api/user', userRoutes);
 app.use('/api/faculty', facultyRouter);
+app.use('/api/student', studentRouter);
+app.use('/api/role', roleRoutes);
+app.use('/api/class', classRoutes);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ 
+        success: false,
+        error: 'Something went wrong! Please try again.' 
+    });
+});
+
+// Start server
+const PORT = process.env.PORT || 5001;
+app.listen(PORT, () => {
+    console.log(`Server started at port: ${PORT}`);
+    console.log(`Swagger documentation available at: http://localhost:${PORT}/api-docs`);
+});
 
 module.exports = app;
 
