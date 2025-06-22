@@ -29,6 +29,16 @@ const userSchema = new mongoose.Schema({
         sparse: true,
         trim: true,
         match: [/^\+?[1-9]\d{1,14}$/, 'Please enter a valid mobile number']
+    },
+    role: {
+        type: String,
+        enum: ['admin', 'faculty'],
+        required: true,
+        default: 'faculty'
+    },
+    isFirstLogin: {
+        type: Boolean,
+        default: true
     }
 }, {
     timestamps: true

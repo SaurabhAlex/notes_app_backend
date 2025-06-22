@@ -209,7 +209,7 @@ router.post('/login', async (req, res) => {
  *             $ref: '#/components/schemas/LoginRequest'
  *           example:
  *             email: "faculty@example.com"
- *             password: "Admin@123"
+ *             password: "Fcl@1234"
  *     responses:
  *       200:
  *         description: Login successful
@@ -232,7 +232,7 @@ router.post('/faculty/login', async (req, res) => {
         }
         
         // Find user and faculty
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email, role: 'faculty' });
         if (!user) {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
@@ -257,11 +257,12 @@ router.post('/faculty/login', async (req, res) => {
         const token = jwt.sign({ 
             userId: user._id,
             facultyId: faculty._id,
-            role: faculty.role.name
+            role: 'faculty'
         }, JWT_SECRET, { expiresIn: '24h' });
         
         res.json({
             message: 'Login successful',
+            isFirstLogin: user.isFirstLogin,
             token,
             faculty: {
                 id: faculty._id,
@@ -336,6 +337,77 @@ router.post('/change-password', auth, async (req, res) => {
 
         // Update password
         user.password = newPassword;
+        await user.save();
+
+        res.json({ message: 'Password changed successfully' });
+    } catch (error) {
+        console.error('Password change error:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
+/**
+ * @swagger
+ * /auth/faculty/change-password:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Change faculty password
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       401:
+ *         description: Invalid current password or unauthorized
+ */
+router.post('/faculty/change-password', auth, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        // Validate input
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Current password and new password are required' });
+        }
+
+        // Validate new password
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+        }
+
+        // Find user
+        const user = await User.findById(req.user._id);
+        if (!user || user.role !== 'faculty') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // Verify current password
+        const isMatch = await user.comparePassword(currentPassword);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Current password is incorrect' });
+        }
+
+        // Check if trying to set default password
+        if (newPassword === 'Fcl@1234') {
+            return res.status(400).json({ error: 'Cannot use default password' });
+        }
+
+        // Update password and first login flag
+        user.password = newPassword;
+        user.isFirstLogin = false;
         await user.save();
 
         res.json({ message: 'Password changed successfully' });
