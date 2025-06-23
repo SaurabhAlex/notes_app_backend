@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const Faculty = require('../models/faculty');
+const Student = require('../models/student');
 const { JWT_SECRET, auth } = require('../middleware/auth');
 
 /**
@@ -59,6 +60,26 @@ const { JWT_SECRET, auth } = require('../middleware/auth');
  *               type: string
  *             role:
  *               type: object
+ *     StudentResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *         token:
+ *           type: string
+ *         student:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *             firstName:
+ *               type: string
+ *             lastName:
+ *               type: string
+ *             email:
+ *               type: string
+ *             mobileNumber:
+ *               type: string
  *   securitySchemes:
  *     bearerAuth:
  *       type: http
@@ -414,6 +435,85 @@ router.post('/faculty/change-password', auth, async (req, res) => {
     } catch (error) {
         console.error('Password change error:', error);
         res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
+/**
+ * @swagger
+ * /auth/student/login:
+ *   post:
+ *     summary: Login student
+ *     description: |
+ *       Login endpoint specifically for students.
+ *       This endpoint:
+ *       1. Validates student credentials
+ *       2. Returns student details and authentication token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/StudentResponse'
+ *       401:
+ *         description: Invalid credentials
+ *       404:
+ *         description: Student not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/student/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        // Find user with role student
+        const user = await User.findOne({ 
+            email: email.toLowerCase(),
+            role: 'student'
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'No student account found with this email' });
+        }
+
+        // Compare password
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+
+        // Generate token
+        const token = jwt.sign({ 
+            userId: user._id,
+            role: 'student'
+        }, JWT_SECRET, { expiresIn: '24h' });
+
+        res.json({
+            message: 'Login successful',
+            token,
+            student: {
+                id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                mobileNumber: user.mobileNumber
+            }
+        });
+    } catch (error) {
+        console.error('Student login error:', error);
+        res.status(500).json({ error: 'An unexpected error occurred during login. Please try again.' });
     }
 });
 
