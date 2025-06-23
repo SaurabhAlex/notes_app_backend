@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const Faculty = require('../models/faculty');
+const Student = require('../models/student');
 const { JWT_SECRET, auth } = require('../middleware/auth');
 
 /**
@@ -59,6 +60,26 @@ const { JWT_SECRET, auth } = require('../middleware/auth');
  *               type: string
  *             role:
  *               type: object
+ *     StudentResponse:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *         token:
+ *           type: string
+ *         student:
+ *           type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *             firstName:
+ *               type: string
+ *             lastName:
+ *               type: string
+ *             email:
+ *               type: string
+ *             mobileNumber:
+ *               type: string
  *   securitySchemes:
  *     bearerAuth:
  *       type: http
@@ -209,7 +230,7 @@ router.post('/login', async (req, res) => {
  *             $ref: '#/components/schemas/LoginRequest'
  *           example:
  *             email: "faculty@example.com"
- *             password: "Admin@123"
+ *             password: "Fcl@1234"
  *     responses:
  *       200:
  *         description: Login successful
@@ -232,7 +253,7 @@ router.post('/faculty/login', async (req, res) => {
         }
         
         // Find user and faculty
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email, role: 'faculty' });
         if (!user) {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
@@ -257,11 +278,12 @@ router.post('/faculty/login', async (req, res) => {
         const token = jwt.sign({ 
             userId: user._id,
             facultyId: faculty._id,
-            role: faculty.role.name
+            role: 'faculty'
         }, JWT_SECRET, { expiresIn: '24h' });
         
         res.json({
             message: 'Login successful',
+            isFirstLogin: user.isFirstLogin,
             token,
             faculty: {
                 id: faculty._id,
@@ -342,6 +364,156 @@ router.post('/change-password', auth, async (req, res) => {
     } catch (error) {
         console.error('Password change error:', error);
         res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
+/**
+ * @swagger
+ * /auth/faculty/change-password:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Change faculty password
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       401:
+ *         description: Invalid current password or unauthorized
+ */
+router.post('/faculty/change-password', auth, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        // Validate input
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Current password and new password are required' });
+        }
+
+        // Validate new password
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+        }
+
+        // Find user
+        const user = await User.findById(req.user._id);
+        if (!user || user.role !== 'faculty') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // Verify current password
+        const isMatch = await user.comparePassword(currentPassword);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Current password is incorrect' });
+        }
+
+        // Check if trying to set default password
+        if (newPassword === 'Fcl@1234') {
+            return res.status(400).json({ error: 'Cannot use default password' });
+        }
+
+        // Update password and first login flag
+        user.password = newPassword;
+        user.isFirstLogin = false;
+        await user.save();
+
+        res.json({ message: 'Password changed successfully' });
+    } catch (error) {
+        console.error('Password change error:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
+/**
+ * @swagger
+ * /auth/student/login:
+ *   post:
+ *     summary: Login student
+ *     description: |
+ *       Login endpoint specifically for students.
+ *       This endpoint:
+ *       1. Validates student credentials
+ *       2. Returns student details and authentication token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/StudentResponse'
+ *       401:
+ *         description: Invalid credentials
+ *       404:
+ *         description: Student not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/student/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        // Find user with role student
+        const user = await User.findOne({ 
+            email: email.toLowerCase(),
+            role: 'student'
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'No student account found with this email' });
+        }
+
+        // Compare password
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Invalid password' });
+        }
+
+        // Generate token
+        const token = jwt.sign({ 
+            userId: user._id,
+            role: 'student'
+        }, JWT_SECRET, { expiresIn: '24h' });
+
+        res.json({
+            message: 'Login successful',
+            token,
+            student: {
+                id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                mobileNumber: user.mobileNumber
+            }
+        });
+    } catch (error) {
+        console.error('Student login error:', error);
+        res.status(500).json({ error: 'An unexpected error occurred during login. Please try again.' });
     }
 });
 

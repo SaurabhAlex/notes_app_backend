@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Student = require('../models/student');
+const User = require('../models/user');
 const { auth } = require('../middleware/auth');
 
 /**
@@ -12,6 +13,7 @@ const { auth } = require('../middleware/auth');
  *       required:
  *         - firstName
  *         - lastName
+ *         - email
  *         - mobileNumber
  *       properties:
  *         firstName:
@@ -20,6 +22,9 @@ const { auth } = require('../middleware/auth');
  *         lastName:
  *           type: string
  *           description: Student's last name
+ *         email:
+ *           type: string
+ *           description: Student's email address (must be unique)
  *         mobileNumber:
  *           type: string
  *           description: Student's mobile number (must be unique)
@@ -43,7 +48,7 @@ const { auth } = require('../middleware/auth');
  *       200:
  *         description: Student profile created successfully
  *       400:
- *         description: Validation error or mobile number already exists
+ *         description: Validation error or mobile number/email already exists
  *       401:
  *         description: Unauthorized
  *       500:
@@ -51,38 +56,48 @@ const { auth } = require('../middleware/auth');
  */
 router.post('/add', auth, async (req, res) => {
     try {
-        const { firstName, lastName, mobileNumber } = req.body;
+        const { firstName, lastName, email, mobileNumber } = req.body;
 
         // Validate required fields
-        if (!firstName || !lastName || !mobileNumber) {
+        if (!firstName || !lastName || !email || !mobileNumber) {
             return res.status(400).json({ 
-                error: 'All fields (firstName, lastName, mobileNumber) are required' 
+                error: 'All fields (firstName, lastName, email, mobileNumber) are required' 
             });
         }
 
         // Check if mobile number is already used
-        const existingMobile = await Student.findOne({ mobileNumber });
+        const existingMobile = await User.findOne({ mobileNumber });
         if (existingMobile) {
             return res.status(400).json({ error: 'Mobile number already registered' });
         }
 
-        // Create new student profile
-        const student = new Student({
-            userId: req.user._id,
+        // Check if email is already used
+        const existingEmail = await User.findOne({ email: email.toLowerCase() });
+        if (existingEmail) {
+            return res.status(400).json({ error: 'Email already registered' });
+        }
+
+        // Create new user with student role
+        const user = new User({
             firstName,
             lastName,
-            mobileNumber
+            email: email.toLowerCase(),
+            mobileNumber,
+            password: 'Student123', // Default password for students
+            role: 'student',
+            isActive: true
         });
 
-        await student.save();
+        await user.save();
 
         res.json({
             message: 'Student profile created successfully',
             student: {
-                id: student._id,
-                firstName: student.firstName,
-                lastName: student.lastName,
-                mobileNumber: student.mobileNumber
+                id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                mobileNumber: user.mobileNumber
             }
         });
     } catch (error) {
