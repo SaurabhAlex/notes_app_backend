@@ -16,6 +16,13 @@ const studentSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, 'Please enter a valid email address']
+    },
     mobileNumber: {
         type: String,
         required: true,
