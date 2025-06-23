@@ -3,7 +3,7 @@ const router = express.Router();
 const Faculty = require('../models/faculty');
 const Role = require('../models/role');
 const User = require('../models/user');
-const { auth } = require('../middleware/auth');
+const { auth, adminAuth } = require('../middleware/auth');
 const mongoose = require('mongoose');
 
 /**
@@ -132,7 +132,7 @@ const mongoose = require('mongoose');
  *       500:
  *         description: Server error
  */
-router.post('/add', auth, async (req, res) => {
+router.post('/add', adminAuth, async (req, res) => {
     try {
         const { firstName, lastName, email, mobileNumber, gender, department, role } = req.body;
 
@@ -171,10 +171,12 @@ router.post('/add', auth, async (req, res) => {
             // Create user account with default password
             const user = new User({
                 email: email.toLowerCase(),
-                password: 'Admin@123',
+                password: 'Fcl@1234',
                 firstName,
                 lastName,
-                mobileNumber
+                mobileNumber,
+                role: 'faculty',
+                isFirstLogin: true
             });
 
             await user.save({ session });
@@ -201,7 +203,7 @@ router.post('/add', auth, async (req, res) => {
                 },
                 loginCredentials: {
                     username: email.toLowerCase(),
-                    password: 'Admin@123'
+                    password: 'Fcl@1234'
                 }
             });
         } catch (error) {
@@ -297,7 +299,7 @@ router.get('/list', auth, async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.put('/edit/:id', auth, async (req, res) => {
+router.put('/edit/:id', adminAuth, async (req, res) => {
     try {
         const { firstName, lastName, email, mobileNumber, gender, department, role } = req.body;
         const facultyId = req.params.id;
@@ -371,7 +373,7 @@ router.put('/edit/:id', auth, async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.delete('/delete/:id', auth, async (req, res) => {
+router.delete('/delete/:id', adminAuth, async (req, res) => {
     try {
         const faculty = await Faculty.findOneAndUpdate(
             { _id: req.params.id, isActive: true },

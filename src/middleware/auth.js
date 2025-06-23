@@ -33,4 +33,36 @@ const auth = async (req, res, next) => {
     }
 };
 
-module.exports = { auth, JWT_SECRET }; 
+// Middleware to check if user is admin
+const adminAuth = async (req, res, next) => {
+    try {
+        // First run the regular auth middleware
+        await auth(req, res, async () => {
+            // Check if user is admin
+            if (req.user.role !== 'admin') {
+                return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+            }
+            next();
+        });
+    } catch (error) {
+        res.status(401).json({ error: 'Please authenticate' });
+    }
+};
+
+// Middleware to check if user is faculty
+const facultyAuth = async (req, res, next) => {
+    try {
+        // First run the regular auth middleware
+        await auth(req, res, async () => {
+            // Check if user is faculty
+            if (req.user.role !== 'faculty') {
+                return res.status(403).json({ error: 'Access denied. Faculty privileges required.' });
+            }
+            next();
+        });
+    } catch (error) {
+        res.status(401).json({ error: 'Please authenticate' });
+    }
+};
+
+module.exports = { auth, adminAuth, facultyAuth, JWT_SECRET }; 
