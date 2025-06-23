@@ -136,7 +136,8 @@ router.get('/list', auth, async (req, res) => {
                 id: student._id,
                 firstName: student.firstName,
                 lastName: student.lastName,
-                mobileNumber: student.mobileNumber
+                mobileNumber: student.mobileNumber,
+                email: student.email
             }))
         });
     } catch (error) {
