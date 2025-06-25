@@ -23,8 +23,12 @@ const auth = async (req, res, next) => {
             throw new Error();
         }
 
-        // Add user to request object
-        req.user = user;
+        // Add user and decoded token info to request object
+        req.user = {
+            ...decoded,  // Include all decoded token information
+            _id: user._id,  // Add database user info
+            role: user.role
+        };
         req.token = token;
         
         next();

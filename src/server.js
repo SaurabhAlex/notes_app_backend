@@ -50,7 +50,7 @@ app.get("/", (req, res) => {
 });
 
 // API routes
-app.use('/auth', authRouter);
+app.use('/api/auth', authRouter);
 app.use('/api/user', userRoutes);
 app.use('/api/faculty', facultyRouter);
 app.use('/api/student', studentRouter);

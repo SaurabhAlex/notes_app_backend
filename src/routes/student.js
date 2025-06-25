@@ -126,17 +126,17 @@ router.post('/add', auth, async (req, res) => {
  */
 router.get('/list', auth, async (req, res) => {
     try {
-        const students = await Student.find({ 
-            userId: req.user._id,
-            isActive: true 
-        });
+        const students = await User.find({ 
+            role: 'student'
+        }).select('_id firstName lastName mobileNumber email');
         
         res.json({
             students: students.map(student => ({
                 id: student._id,
                 firstName: student.firstName,
                 lastName: student.lastName,
-                mobileNumber: student.mobileNumber
+                mobileNumber: student.mobileNumber,
+                email: student.email
             }))
         });
     } catch (error) {
@@ -179,32 +179,46 @@ router.get('/list', auth, async (req, res) => {
  */
 router.put('/edit/:id', auth, async (req, res) => {
     try {
-        const { firstName, lastName, mobileNumber } = req.body;
+        const { firstName, lastName, mobileNumber, email } = req.body;
         const studentId = req.params.id;
 
         // Validate required fields
-        if (!firstName || !lastName || !mobileNumber) {
+        if (!firstName || !lastName || !mobileNumber || !email) {
             return res.status(400).json({ 
-                error: 'All fields (firstName, lastName, mobileNumber) are required' 
+                error: 'All fields (firstName, lastName, mobileNumber, email) are required' 
             });
         }
 
         // Find student profile
-        const student = await Student.findOne({ 
-            _id: studentId,
-            userId: req.user._id,
-            isActive: true
-        });
+        const student = await User.findById(studentId);
 
         if (!student) {
-            return res.status(404).json({ error: 'Student profile not found' });
+            return res.status(404).json({ error: 'Student not found' });
+        }
+
+        if (student.role !== 'student') {
+            return res.status(400).json({ error: 'User is not a student' });
         }
 
         // Check if mobile number is being changed and if it's already used
         if (mobileNumber !== student.mobileNumber) {
-            const existingMobile = await Student.findOne({ mobileNumber });
+            const existingMobile = await User.findOne({ 
+                _id: { $ne: studentId },
+                mobileNumber 
+            });
             if (existingMobile) {
                 return res.status(400).json({ error: 'Mobile number already registered' });
+            }
+        }
+
+        // Check if email is being changed and if it's already used
+        if (email.toLowerCase() !== student.email) {
+            const existingEmail = await User.findOne({ 
+                _id: { $ne: studentId },
+                email: email.toLowerCase() 
+            });
+            if (existingEmail) {
+                return res.status(400).json({ error: 'Email already registered' });
             }
         }
 
@@ -212,23 +226,32 @@ router.put('/edit/:id', auth, async (req, res) => {
         student.firstName = firstName;
         student.lastName = lastName;
         student.mobileNumber = mobileNumber;
+        student.email = email.toLowerCase();
 
-        await student.save();
+        const updatedStudent = await student.save();
 
         res.json({
             message: 'Student profile updated successfully',
             student: {
-                id: student._id,
-                firstName: student.firstName,
-                lastName: student.lastName,
-                mobileNumber: student.mobileNumber
+                id: updatedStudent._id,
+                firstName: updatedStudent.firstName,
+                lastName: updatedStudent.lastName,
+                mobileNumber: updatedStudent.mobileNumber,
+                email: updatedStudent.email
             }
         });
     } catch (error) {
+        console.error('Error updating student:', error);
         if (error.name === 'ValidationError') {
             return res.status(400).json({ error: error.message });
         }
-        res.status(500).json({ error: 'Failed to update student profile' });
+        if (error.name === 'CastError') {
+            return res.status(400).json({ error: 'Invalid student ID format' });
+        }
+        res.status(500).json({ 
+            error: 'Failed to update student profile',
+            details: error.message 
+        });
     }
 });
 
@@ -261,25 +284,125 @@ router.delete('/delete/:id', auth, async (req, res) => {
     try {
         const studentId = req.params.id;
         
-        const student = await Student.findOneAndUpdate(
-            { 
-                _id: studentId,
-                userId: req.user._id,
-                isActive: true
-            },
-            { isActive: false },
-            { new: true }
-        );
+        // First find the student to verify it exists and is a student
+        const student = await User.findById(studentId);
         
         if (!student) {
-            return res.status(404).json({ error: 'Student profile not found' });
+            return res.status(404).json({ error: 'Student not found' });
         }
 
+        if (student.role !== 'student') {
+            return res.status(400).json({ error: 'User is not a student' });
+        }
+
+        // Delete the student
+        await User.findByIdAndDelete(studentId);
+
         res.json({
-            message: 'Student profile deleted successfully'
+            message: 'Student deleted successfully'
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to delete student profile' });
+        console.error('Error deleting student:', error);
+        if (error.name === 'CastError') {
+            return res.status(400).json({ error: 'Invalid student ID format' });
+        }
+        res.status(500).json({ 
+            error: 'Failed to delete student',
+            details: error.message 
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Change user's password
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: Current password of the user
+ *               newPassword:
+ *                 type: string
+ *                 description: New password (minimum 6 characters)
+ *             example:
+ *               currentPassword: "oldPassword123"
+ *               newPassword: "newPassword123"
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Password changed successfully"
+ *       400:
+ *         description: Validation error or incorrect current password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Current password is incorrect"
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.post('/change-password', auth, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        // Validate required fields
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ 
+                error: 'Both current password and new password are required' 
+            });
+        }
+
+        // Validate new password length
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                error: 'New password must be at least 6 characters long'
+            });
+        }
+
+        // Get the user from the database
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Verify current password
+        const isMatch = await user.comparePassword(currentPassword);
+        if (!isMatch) {
+            return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+
+        // Update password
+        user.password = newPassword;
+        await user.save(); // This will trigger the password hashing middleware
+
+        res.json({ message: 'Password changed successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to change password' });
     }
 });
 
