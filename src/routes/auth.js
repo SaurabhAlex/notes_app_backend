@@ -96,7 +96,7 @@ const { JWT_SECRET, auth } = require('../middleware/auth');
 
 /**
  * @swagger
- * /auth/signup:
+ * /api/auth/signup:
  *   post:
  *     summary: Register a new user
  *     tags: [Auth]
@@ -139,8 +139,18 @@ router.post('/signup', async (req, res) => {
 
         await user.save();
         
-        // Generate token
-        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '24h' });
+        // Generate token with user information
+        const token = jwt.sign(
+            { 
+                userId: user._id,
+                role: user.role,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName
+            }, 
+            JWT_SECRET, 
+            { expiresIn: '24h' }
+        );
         
         res.status(201).json({
             message: 'User created successfully',
@@ -155,7 +165,7 @@ router.post('/signup', async (req, res) => {
 
 /**
  * @swagger
- * /auth/login:
+ * /api/auth/login:
  *   post:
  *     summary: Login regular user (non-faculty)
  *     tags: [Auth]
@@ -196,8 +206,18 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        // Generate token
-        const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '24h' });
+        // Generate token with user information
+        const token = jwt.sign(
+            { 
+                userId: user._id,
+                role: user.role,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName
+            }, 
+            JWT_SECRET, 
+            { expiresIn: '24h' }
+        );
         
         res.json({
             message: 'Login successful',
@@ -304,11 +324,11 @@ router.post('/faculty/login', async (req, res) => {
 
 /**
  * @swagger
- * /auth/change-password:
+ * /api/auth/change-password:
  *   post:
  *     security:
  *       - bearerAuth: []
- *     summary: Change user password
+ *     summary: Change user's password
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -322,30 +342,59 @@ router.post('/faculty/login', async (req, res) => {
  *             properties:
  *               currentPassword:
  *                 type: string
+ *                 description: Current password of the user
  *               newPassword:
  *                 type: string
+ *                 description: New password (minimum 6 characters)
+ *             example:
+ *               currentPassword: "Student123"
+ *               newPassword: "Std@1234"
  *     responses:
  *       200:
  *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Password changed successfully"
+ *       400:
+ *         description: Validation error or incorrect current password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Current password is incorrect"
  *       401:
- *         description: Invalid current password
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.post('/change-password', auth, async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
-        // Validate input
+        // Validate required fields
         if (!currentPassword || !newPassword) {
-            return res.status(400).json({ error: 'Current password and new password are required' });
+            return res.status(400).json({ 
+                error: 'Both current password and new password are required' 
+            });
         }
 
-        // Validate new password
+        // Validate new password length
         if (newPassword.length < 6) {
-            return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+            return res.status(400).json({
+                error: 'New password must be at least 6 characters long'
+            });
         }
 
-        // Find user
-        const user = await User.findById(req.user._id);
+        // Get the user from the database using userId from token
+        const user = await User.findById(req.user.userId);  // Using userId from token
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -353,16 +402,16 @@ router.post('/change-password', auth, async (req, res) => {
         // Verify current password
         const isMatch = await user.comparePassword(currentPassword);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Current password is incorrect' });
+            return res.status(400).json({ error: 'Current password is incorrect' });
         }
 
         // Update password
         user.password = newPassword;
-        await user.save();
+        await user.save(); // This will trigger the password hashing middleware
 
         res.json({ message: 'Password changed successfully' });
     } catch (error) {
-        console.error('Password change error:', error);
+        console.error('Error changing password:', error);
         res.status(500).json({ error: 'Failed to change password' });
     }
 });
@@ -440,32 +489,62 @@ router.post('/faculty/change-password', auth, async (req, res) => {
 
 /**
  * @swagger
- * /auth/student/login:
+ * /api/auth/student/login:
  *   post:
- *     summary: Login student
- *     description: |
- *       Login endpoint specifically for students.
- *       This endpoint:
- *       1. Validates student credentials
- *       2. Returns student details and authentication token
+ *     summary: Login for students
  *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/LoginRequest'
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Student's email address
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Student's password
+ *             example:
+ *               email: "sunny2@gmail.com"
+ *               password: "Student123"
  *     responses:
  *       200:
  *         description: Login successful
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/StudentResponse'
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Login successful"
+ *                 token:
+ *                   type: string
+ *                   example: "eyJhbGciOiJIUzI1NiI..."
+ *                 student:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     mobileNumber:
+ *                       type: string
+ *       400:
+ *         description: Validation error
  *       401:
- *         description: Invalid credentials
- *       404:
- *         description: Student not found
+ *         description: Invalid credentials or not a student account
  *       500:
  *         description: Server error
  */
@@ -478,27 +557,34 @@ router.post('/student/login', async (req, res) => {
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        // Find user with role student
+        // Find user and check if they are a student
         const user = await User.findOne({ 
             email: email.toLowerCase(),
             role: 'student'
         });
 
         if (!user) {
-            return res.status(404).json({ error: 'No student account found with this email' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
         // Compare password
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid password' });
+            return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        // Generate token
-        const token = jwt.sign({ 
-            userId: user._id,
-            role: 'student'
-        }, JWT_SECRET, { expiresIn: '24h' });
+        // Generate token with role information
+        const token = jwt.sign(
+            { 
+                userId: user._id,
+                role: user.role,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName
+            }, 
+            JWT_SECRET, 
+            { expiresIn: '24h' }
+        );
 
         res.json({
             message: 'Login successful',
@@ -513,7 +599,7 @@ router.post('/student/login', async (req, res) => {
         });
     } catch (error) {
         console.error('Student login error:', error);
-        res.status(500).json({ error: 'An unexpected error occurred during login. Please try again.' });
+        res.status(500).json({ error: 'Failed to login' });
     }
 });
 
